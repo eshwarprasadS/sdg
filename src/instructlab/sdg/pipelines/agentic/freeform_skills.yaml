@@ -1,0 +1,145 @@
+version: "1.0"
+blocks:
+  - name: gen_questions
+    type: LLMBlock
+    config:
+      config_path: ../../configs/skills/freeform_questions.yaml
+      output_cols:
+        - question
+      batch_kwargs:
+        num_samples: 30
+    drop_duplicates:
+      - question
+  - name: eval_questions
+    type: LLMBlock
+    config:
+      config_path: ../../configs/skills/evaluate_freeform_questions.yaml
+      output_cols:
+        - evaluation
+        - score
+  - name: filter_questions
+    type: FilterByValueBlock
+    config:
+      filter_column: score
+      filter_value: 1.0
+      operation: eq
+      convert_dtype: float
+    drop_columns:
+      - evaluation
+      - score
+      - num_samples
+  - name: gen_responses
+    type: LLMBlock
+    config:
+      config_path: ../../configs/skills/freeform_responses.yaml
+      output_cols:
+        - response
+  - name: evaluate_qa_pair
+    type: LLMBlock
+    config:
+      config_path: ../../configs/skills/evaluate_freeform_pair.yaml
+      output_cols:
+        - evaluation
+        - score
+  - name: filter_qa_pair
+    type: FilterByValueBlock
+    config:
+      filter_column: score
+      filter_value: 2.0
+      operation: ge
+      convert_dtype: float
+    drop_columns:
+      - evaluation
+      - score
+  - name: router
+    type: LLMBlock
+    config:
+      config_path: ../../configs/skills/router.yaml
+      output_cols:
+        - route
+      gen_kwargs:
+        model: skill-classifier-v3-clm
+        temperature: 0
+        max_tokens: 1
+        extra_body:
+          allowed_token_ids:
+            - 32001
+            - 32002
+            - 32003
+            - 32004
+            - 32005
+            - 32006
+            - 32007
+            - 32008
+  - name: icl_populator
+    type: SamplePopulatorBlock
+    config:
+      config_paths:
+        - ../../configs/domain_examples/skills/_A_.yaml
+        - ../../configs/domain_examples/skills/_B_.yaml
+        - ../../configs/domain_examples/skills/_C_.yaml
+        - ../../configs/domain_examples/skills/_D_.yaml
+        - ../../configs/domain_examples/skills/_E_.yaml
+        - ../../configs/domain_examples/skills/_F_.yaml
+        - ../../configs/domain_examples/skills/_G_.yaml
+        - ../../configs/domain_examples/skills/_H_.yaml
+      column_name: route
+  - name: analyzer
+    type: LLMBlock
+    config:
+      config_path: ../../configs/skills/analyzer.yaml
+      output_cols:
+        - analysis
+        - rubric
+  - name: critic
+    type: LLMBlock
+    config:
+      config_path: ../../configs/skills/critic.yaml
+      output_cols:
+        - critique
+  - name: planner
+    type: LLMBlock
+    config:
+      config_path: ../../configs/skills/planner.yaml
+      output_cols:
+        - plan
+  - name: revised_responder
+    type: LLMBlock
+    config:
+      config_path: ../../configs/skills/revised_responder.yaml
+      output_cols:
+        - revised_response
+    drop_columns:
+      - icl_query
+      - icl_response
+      - icl_analysis
+      - icl_rubric
+      - icl_critique
+      - icl_plan
+      - icl_revised_response
+  - name: judge
+    type: LLMBlock
+    config:
+      config_path: ../../configs/skills/judge.yaml
+      output_cols:
+        - judgement
+        - verdict
+  - name: filter_judgement
+    type: FilterByValueBlock
+    config:
+      filter_column: verdict
+      filter_value:
+        - Assistant A
+        - Assistant B
+      operation: eq
+  - name: response_selector
+    type: SelectorBlock
+    config:
+      choice_map:
+         Assistant A: "response"
+         Assistant B: "revised_response"
+      choice_col: verdict
+      output_col: chosen_response
+    drop_columns:
+      - judgement
+      - verdict
